@@ -1,7 +1,6 @@
-# weibullvdw.py - FIXED VERSION
+# weibullvdw.py - FINAL WORKING VERSION
 import streamlit as st
 import numpy as np
-import pandas as pd
 import plotly.graph_objects as go
 from scipy.special import gamma
 import warnings
@@ -67,6 +66,24 @@ st.markdown("""
         padding: 12px 24px;
         font-weight: 600;
     }
+    .phase-box {
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+        border-left: 5px solid;
+    }
+    .phase-infant {
+        border-left-color: #e74c3c;
+        background: #ffeaea;
+    }
+    .phase-useful {
+        border-left-color: #27ae60;
+        background: #e8f6ef;
+    }
+    .phase-wearout {
+        border-left-color: #f39c12;
+        background: #fef9e7;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -82,7 +99,6 @@ class WeibullAnalyzer:
         if len(failures) == 0:
             raise ValueError("Please enter failure data")
         
-        # Professional Weibull estimation
         if len(failures) > 1:
             sorted_data = np.sort(failures)
             n = len(sorted_data)
@@ -90,7 +106,6 @@ class WeibullAnalyzer:
             x = np.log(sorted_data)
             y = np.log(-np.log(1 - ranks))
             
-            # Remove any infinite values
             valid_indices = np.isfinite(x) & np.isfinite(y)
             x_valid = x[valid_indices]
             y_valid = y[valid_indices]
@@ -100,15 +115,12 @@ class WeibullAnalyzer:
                 self.beta = slope
                 self.eta = np.exp(-intercept / slope)
             else:
-                # Fallback method
                 self.beta = 1.5
                 self.eta = np.mean(failures)
         else:
-            # Single data point estimation
             self.beta = 1.5
             self.eta = failures[0] * 1.2
         
-        # Ensure reasonable values
         self.beta = max(0.1, min(10.0, self.beta))
         self.eta = max(0.1, self.eta)
             
@@ -121,10 +133,8 @@ class WeibullAnalyzer:
         return (self.beta/self.eta) * (t/self.eta)**(self.beta-1)
 
 # =============================================
-# MAIN APPLICATION
+# HEADER SECTION
 # =============================================
-
-# Header
 st.markdown("""
 <div class='main-header'>
     <h1>🔬 PROFESSIONAL WEIBULL ANALYSIS</h1>
@@ -132,7 +142,9 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Sidebar
+# =============================================
+# SIDEBAR SECTION
+# =============================================
 with st.sidebar:
     st.markdown("### 🏢 COMPANY INFO")
     company_name = st.text_input("Company Name", value="Vaibhav Engineering Solutions")
@@ -140,64 +152,77 @@ with st.sidebar:
     equipment_model = st.text_input("Equipment Model", value="Motor Drive X500")
     time_units = st.selectbox("Time Units", ["hours", "days", "weeks", "months", "years"])
 
-# Main Content
+# =============================================
+# DATA INPUT SECTION
+# =============================================
+st.markdown("### 📊 ENTER YOUR RELIABILITY DATA")
+
 col1, col2 = st.columns(2)
 
 with col1:
-    st.markdown("### 📊 FAILURE DATA")
+    st.markdown("#### Failure Times (When equipment failed)")
     failure_data = st.text_area(
-        "Enter failure times (comma separated):",
+        "Enter numbers separated by commas:",
         placeholder="120, 250, 300, 400, 560, 720, 900",
         height=100,
         key="failure_data"
     )
-    
-    if st.button("📥 Load Sample Data", key="sample_btn"):
-        st.session_state.failure_data = "120, 250, 300, 400, 560, 720, 900, 1250"
-        st.rerun()
 
 with col2:
-    st.markdown("### ⚙️ CENSORED DATA")
+    st.markdown("#### Censored Times (Still working)")
     censored_data = st.text_area(
-        "Enter censored times (still working):",
+        "Enter numbers separated by commas:",
         placeholder="2000, 2500, 3000",
         height=100,
         key="censored_data"
     )
 
+# Sample data button
+if st.button("📥 Load Sample Data", key="sample_btn"):
+    st.session_state.failure_data = "120, 250, 300, 400, 560, 720, 900, 1250"
+    st.rerun()
+
 # Use sample data if loaded
 if hasattr(st.session_state, 'failure_data'):
     failure_data = st.session_state.failure_data
 
+# =============================================
+# ANALYSIS SECTION
+# =============================================
 if st.button("🚀 ANALYZE DATA", type="primary", use_container_width=True, key="analyze_btn"):
     if not failure_data:
         st.error("❌ Please enter failure data")
     else:
         try:
-            # Parse data
+            # Parse failure data
             failures = []
             for x in failure_data.split(','):
                 x_clean = x.strip()
                 if x_clean:
                     try:
-                        failures.append(float(x_clean))
+                        num = float(x_clean)
+                        if num > 0:
+                            failures.append(num)
                     except ValueError:
-                        st.warning(f"Skipping invalid number: {x_clean}")
+                        continue
             
+            # Parse censored data
             censored = []
             if censored_data:
                 for x in censored_data.split(','):
                     x_clean = x.strip()
                     if x_clean:
                         try:
-                            censored.append(float(x_clean))
+                            num = float(x_clean)
+                            if num > 0:
+                                censored.append(num)
                         except ValueError:
-                            st.warning(f"Skipping invalid number: {x_clean}")
+                            continue
             
             if not failures:
                 st.error("❌ No valid failure data found")
             else:
-                # Analyze
+                # Perform analysis
                 analyzer = WeibullAnalyzer()
                 analyzer.calculate_weibull(failures)
                 
@@ -208,10 +233,11 @@ if st.button("🚀 ANALYZE DATA", type="primary", use_container_width=True, key=
                 b10_life = analyzer.eta * (-np.log(0.9)) ** (1/analyzer.beta)
                 b50_life = analyzer.eta * (-np.log(0.5)) ** (1/analyzer.beta)
                 
-                # Display Metrics
+                # =============================================
+                # METRICS DISPLAY
+                # =============================================
                 st.markdown("### 📈 RELIABILITY METRICS")
                 
-                # Create metric columns
                 col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
@@ -233,7 +259,7 @@ if st.button("🚀 ANALYZE DATA", type="primary", use_container_width=True, key=
                 with col3:
                     st.markdown(f"""
                     <div class='metric-card'>
-                        <div class='metric-label'>MTTF</div>
+                        <div class='metric-label'>Mean Time To Failure</div>
                         <div class='metric-value'>{mttf:.0f}</div>
                         <div class='metric-label'>{time_units}</div>
                     </div>
@@ -248,46 +274,69 @@ if st.button("🚀 ANALYZE DATA", type="primary", use_container_width=True, key=
                     </div>
                     """, unsafe_allow_html=True)
                 
-                # Failure Phase Analysis
+                # =============================================
+                # FAILURE PHASE ANALYSIS
+                # =============================================
                 st.markdown("### 🔍 FAILURE PATTERN ANALYSIS")
+                
                 if analyzer.beta < 1.0:
-                    st.info("""
-                    **📉 INFANT MORTALITY PHASE** (β < 1.0)
-                    - **Pattern**: Decreasing failure rate over time
-                    - **Meaning**: Early failures decreasing as weak units fail
-                    - **Action**: Focus on burn-in testing and quality control
-                    """)
+                    st.markdown("""
+                    <div class='phase-box phase-infant'>
+                        <h4>📉 INFANT MORTALITY PHASE (β < 1.0)</h4>
+                        <p><strong>Pattern:</strong> Decreasing failure rate over time</p>
+                        <p><strong>Meaning:</strong> Early failures decreasing as weak units fail</p>
+                        <p><strong>Action:</strong> Focus on burn-in testing and quality control</p>
+                    </div>
+                    """, unsafe_allow_html=True)
                 elif analyzer.beta <= 2.0:
-                    st.success("""
-                    **📊 USEFUL LIFE PHASE** (β ≈ 1.0-2.0)  
-                    - **Pattern**: Relatively constant failure rate  
-                    - **Meaning**: Random failures during normal operation  
-                    - **Action**: Implement preventive maintenance schedule  
-                    """)
+                    st.markdown("""
+                    <div class='phase-box phase-useful'>
+                        <h4>📊 USEFUL LIFE PHASE (β ≈ 1.0-2.0)</h4>
+                        <p><strong>Pattern:</strong> Relatively constant failure rate</p>
+                        <p><strong>Meaning:</strong> Random failures during normal operation</p>
+                        <p><strong>Action:</strong> Implement preventive maintenance schedule</p>
+                    </div>
+                    """, unsafe_allow_html=True)
                 else:
-                    st.warning("""
-                    **📈 WEAR-OUT PHASE** (β > 2.0)
-                    - **Pattern**: Increasing failure rate over time  
-                    - **Meaning**: Aging and wear-out mechanisms dominant  
-                    - **Action**: Plan for replacement and intensified inspections  
+                    st.markdown("""
+                    <div class='phase-box phase-wearout'>
+                        <h4>📈 WEAR-OUT PHASE (β > 2.0)</h4>
+                        <p><strong>Pattern:</strong> Increasing failure rate over time</p>
+                        <p><strong>Meaning:</strong> Aging and wear-out mechanisms dominant</p>
+                        <p><strong>Action:</strong> Plan for replacement and intensified inspections</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # =============================================
+                # DATA SUMMARY
+                # =============================================
+                st.markdown("### 📋 DATA SUMMARY")
+                
+                summary_col1, summary_col2 = st.columns(2)
+                
+                with summary_col1:
+                    st.info(f"""
+                    **Failure Data:**
+                    - Number of failures: {len(failures)}
+                    - Values: {', '.join(f'{x:.1f}' for x in sorted(failures))}
                     """)
                 
-                # Data Summary
-                st.markdown("### 📋 DATA SUMMARY")
-                st.code(f"""
-                Failure Data: {len(failures)} points
-                {', '.join(f'{x:.1f}' for x in sorted(failures))}
+                with summary_col2:
+                    st.info(f"""
+                    **Censored Data:**
+                    - Number of censored: {len(censored)}
+                    - Values: {', '.join(f'{x:.1f}' for x in sorted(censored)) if censored else 'None'}
+                    """)
                 
-                Censored Data: {len(censored)} points  
-                {', '.join(f'{x:.1f}' for x in sorted(censored)) if censored else 'None'}
-                """)
-                
-                # Plots Section
+                # =============================================
+                # RELIABILITY PLOT
+                # =============================================
                 st.markdown("### 📊 RELIABILITY ANALYSIS PLOTS")
                 
-                # Reliability Plot
                 st.markdown('<div class="plot-container">', unsafe_allow_html=True)
-                t_max = max(analyzer.eta * 3, max(failures) * 1.5) if failures else analyzer.eta * 3
+                st.markdown("#### 📈 Reliability Over Time")
+                
+                t_max = max(analyzer.eta * 3, max(failures) * 1.5)
                 t = np.linspace(0.1, t_max, 200)
                 reliability = analyzer.reliability_function(t)
                 
@@ -299,7 +348,6 @@ if st.button("🚀 ANALYZE DATA", type="primary", use_container_width=True, key=
                     line=dict(width=4, color='#667eea')
                 ))
                 
-                # Add B10 life marker
                 fig1.add_vline(
                     x=b10_life, 
                     line_dash="dash", 
@@ -309,23 +357,28 @@ if st.button("🚀 ANALYZE DATA", type="primary", use_container_width=True, key=
                 )
                 
                 fig1.update_layout(
-                    title='📈 Reliability Over Time',
                     xaxis_title=f'Time ({time_units})',
                     yaxis_title='Reliability Probability',
-                    height=400
+                    height=400,
+                    showlegend=False
                 )
                 st.plotly_chart(fig1, use_container_width=True)
                 
                 st.markdown("""
-                **📈 Understanding This Plot:**
-                - The blue curve shows how reliability decreases from 100% to 0% over time
-                - **B10 Life (red line)**: Time when 10% of units are expected to fail
-                - **Steep drop** = Rapid reliability decrease | **Gentle slope** = Slow degradation
+                **Understanding the Reliability Plot:**
+                - The blue curve shows how reliability decreases over time
+                - B10 Life (red line) shows when 10% of units are expected to fail
+                - Steep drop indicates rapid reliability decrease
+                - Gentle slope indicates slow degradation
                 """)
                 st.markdown('</div>', unsafe_allow_html=True)
                 
-                # Failure Rate Plot
+                # =============================================
+                # FAILURE RATE PLOT
+                # =============================================
                 st.markdown('<div class="plot-container">', unsafe_allow_html=True)
+                st.markdown("#### 📊 Failure Rate Over Time")
+                
                 failure_rate = analyzer.failure_rate(t)
                 
                 fig2 = go.Figure()
@@ -335,72 +388,73 @@ if st.button("🚀 ANALYZE DATA", type="primary", use_container_width=True, key=
                     name='Failure Rate',
                     line=dict(width=4, color='#e74c3c')
                 ))
+                
                 fig2.update_layout(
-                    title='📊 Failure Rate Over Time',
                     xaxis_title=f'Time ({time_units})',
                     yaxis_title='Failure Rate',
-                    height=400
+                    height=400,
+                    showlegend=False
                 )
                 st.plotly_chart(fig2, use_container_width=True)
                 
                 st.markdown(f"""
-                **📊 Failure Rate Pattern Analysis:**
-                - **β = {analyzer.beta:.2f}** indicates {'decreasing' if analyzer.beta < 1.0 else 'constant' if analyzer.beta <= 2.0 else 'increasing'} failure rate
-                - This helps identify your equipment's current life phase
-                - Proper maintenance strategy depends on this pattern
+                **Understanding the Failure Rate Plot:**
+                - Shape parameter β = {analyzer.beta:.2f}
+                - This indicates {'decreasing' if analyzer.beta < 1.0 else 'constant' if analyzer.beta <= 2.0 else 'increasing'} failure rate
+                - Helps identify equipment's current life phase
                 """)
                 st.markdown('</div>', unsafe_allow_html=True)
                 
-                # Generate Report
+                # =============================================
+                # REPORT GENERATION
+                # =============================================
                 st.markdown("### 📄 PROFESSIONAL REPORT")
+                
                 report = f"""
-# 🔬 WEIBULL ANALYSIS REPORT
-## {company_name.upper()}
+WEIBULL ANALYSIS REPORT
+=======================
 
-**Report Date:** {datetime.now().strftime("%Y-%m-%d %H:%M")}  
-**Analyst:** {analyst_name}  
-**Equipment:** {equipment_model}  
-**Time Units:** {time_units}  
+Company: {company_name}
+Analyst: {analyst_name}
+Equipment: {equipment_model}
+Date: {datetime.now().strftime("%Y-%m-%d %H:%M")}
+Time Units: {time_units}
 
-## EXECUTIVE SUMMARY
+RESULTS
+-------
+- Shape Parameter (β): {analyzer.beta:.3f}
+- Scale Parameter (η): {analyzer.eta:.1f} {time_units}
+- Mean Time To Failure: {mttf:.1f} {time_units}
+- B10 Life (10% failures): {b10_life:.1f} {time_units}
+- B50 Life (Median life): {b50_life:.1f} {time_units}
 
-### Weibull Parameters:
-- **Shape Parameter (β):** {analyzer.beta:.3f}
-- **Scale Parameter (η):** {analyzer.eta:.1f} {time_units}
+FAILURE PHASE ANALYSIS
+----------------------
+Phase: {'Infant Mortality' if analyzer.beta < 1.0 else 'Useful Life' if analyzer.beta <= 2.0 else 'Wear-Out'}
+Characteristics: {'Decreasing failure rate - early life failures' if analyzer.beta < 1.0 else 'Constant failure rate - normal operation' if analyzer.beta <= 2.0 else 'Increasing failure rate - aging equipment'}
 
-### Key Reliability Metrics:
-- **Mean Time To Failure (MTTF):** {mttf:.1f} {time_units}
-- **B10 Life (10% Failures):** {b10_life:.1f} {time_units}
-- **B50 Life (Median Life):** {b50_life:.1f} {time_units}
+MAINTENANCE RECOMMENDATIONS
+---------------------------
+1. Optimal Replacement Time: {b10_life:.0f} {time_units}
+2. Preventive Maintenance Interval: {b10_life/2:.0f} {time_units}
+3. Spare Parts Planning: Maintain {max(2, len(failures))} units
 
-## FAILURE PHASE ANALYSIS
-
-### Identified Phase: {'Infant Mortality' if analyzer.beta < 1.0 else 'Useful Life' if analyzer.beta <= 2.0 else 'Wear-Out'}
-
-**Characteristics:** {'Decreasing failure rate - early life failures' if analyzer.beta < 1.0 else 'Constant failure rate - normal operation' if analyzer.beta <= 2.0 else 'Increasing failure rate - aging equipment'}
-
-## MAINTENANCE RECOMMENDATIONS
-
-1. **Optimal Replacement Time:** {b10_life:.0f} {time_units}
-2. **Preventive Maintenance Interval:** {b10_life/2:.0f} {time_units}
-3. **Spare Parts Planning:** Maintain {max(2, len(failures))} units in inventory
-
-## DATA SUMMARY
-
-**Failure Data ({len(failures)} points):**
+DATA SUMMARY
+------------
+Failure Data ({len(failures)} points):
 {', '.join(f'{x:.1f}' for x in sorted(failures))}
 
-**Censored Data ({len(censored)} points):**
+Censored Data ({len(censored)} points):
 {', '.join(f'{x:.1f}' for x in sorted(censored)) if censored else 'None'}
 
 ---
-*Generated by Professional Weibull Analysis System*
+Generated by Professional Weibull Analysis Tool
 """
                 
                 st.download_button(
                     label="📥 DOWNLOAD PROFESSIONAL REPORT",
                     data=report,
-                    file_name=f"weibull_analysis_{equipment_model.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+                    file_name=f"weibull_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
                     mime="text/plain",
                     use_container_width=True
                 )
@@ -408,6 +462,8 @@ if st.button("🚀 ANALYZE DATA", type="primary", use_container_width=True, key=
         except Exception as e:
             st.error(f"❌ Analysis Error: {str(e)}")
 
-# Footer
+# =============================================
+# FOOTER
+# =============================================
 st.markdown("---")
-st.markdown("*Built with ❤️ by Vaibhav Engineering Solutions • Professional Reliability Engineering*")
+st.markdown("**Built with ❤️ by Vaibhav Engineering Solutions • Professional Reliability Engineering**")
